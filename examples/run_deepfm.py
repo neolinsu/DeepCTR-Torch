@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from deepctr_torch.inputs import (DenseFeat, SparseFeat, VarLenSparseFeat,
                                   get_feature_names)
-from deepctr_torch.models.din import DIN
+from deepctr_torch.models.deepfm import DeepFM
 
 
 def get_xy_fd():
@@ -43,10 +43,10 @@ if __name__ == "__main__":
         print('cuda ready...')
         device = 'cuda:0'
 
-    model = DIN(feature_columns, behavior_feature_list, device=device)
+    model = DeepFM([], feature_columns, behavior_feature_list, device=device)
     model.compile('sgd', 'binary_crossentropy',
                   metrics=['binary_crossentropy'],
                   optimizer_sparse='adam',
-                  opt_lr=0.01,
+                  opt_lr=0.001,
                   opt_s_lr=0.001)
     history = model.fit(x, y, batch_size=3, epochs=100, validation_split=0.0, verbose=2)

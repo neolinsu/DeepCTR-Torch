@@ -98,7 +98,6 @@ class BaseModel(nn.Module):
         self.reg_loss = torch.zeros((1,), device=device)
         self.aux_loss = torch.zeros((1,), device=device)
         self.device = device  # device
-
         self.feature_index = build_input_features(
             linear_feature_columns + dnn_feature_columns)
         self.dnn_feature_columns = dnn_feature_columns
@@ -212,11 +211,11 @@ class BaseModel(nn.Module):
                         x = x_train.to(self.device).float()
                         y = y_train.to(self.device).float()
 
-                        y_pred = model(x).squeeze()
-
                         optim.zero_grad()
                         if optim_s is not None:
                             optim_s.zero_grad()
+                        y_pred = model(x).squeeze()
+
                         loss = loss_func(y_pred, y.squeeze(), reduction='sum')
 
                         total_loss = loss + self.reg_loss + self.aux_loss
@@ -375,6 +374,8 @@ class BaseModel(nn.Module):
                 loss=None,
                 metrics=None,
                 optimizer_sparse=None,
+                opt_lr=None,
+                opt_s_lr=None,
                 ):
         """
         :param optimizer: String (name of optimizer) or optimizer instance. See [optimizers](https://pytorch.org/docs/stable/optim.html).
@@ -382,61 +383,63 @@ class BaseModel(nn.Module):
         :param metrics: List of metrics to be evaluated by the model during training and testing. Typically you will use `metrics=['accuracy']`.
         """
 
-        self.optim, self.optim_s = self._get_optim(optimizer, optimizer_sparse)
+        self.optim, self.optim_s = self._get_optim(optimizer, opt_lr, optimizer_sparse, opt_s_lr)
         self.loss_func = self._get_loss_func(loss)
         self.metrics = self._get_metrics(metrics)
 
-    def _get_optim(self, optimizer, optimizer_sparse):
+    def _get_optim(self, optimizer, opt_lr, optimizer_sparse, opt_s_lr):
         optim_s = None
         if optimizer_sparse is None:
             if isinstance(optimizer, str):
+                wargs = {'lr': opt_lr} if opt_lr is not None else {}
                 if optimizer == "sgd":
-                    optim = torch.optim.SGD(self.parameters(), lr=0.01)
+                    optim = torch.optim.SGD(self.parameters(), **wargs)
                 elif optimizer == "adam":
-                    optim = torch.optim.Adam(self.parameters())  # 0.001
+                    optim = torch.optim.Adam(self.parameters(), **wargs)
                 elif optimizer == "adagrad":
-                    optim = torch.optim.Adagrad(self.parameters())  # 0.01
+                    optim = torch.optim.Adagrad(self.parameters(), **wargs)
                 elif optimizer == "rmsprop":
-                    optim = torch.optim.RMSprop(self.parameters())
+                    optim = torch.optim.RMSprop(self.parameters(), **wargs)
                 else:
                     raise NotImplementedError
+                
             else:
                 optim = optimizer
         else:
             def sparse_parameters(named_gen):
                 for name, item in named_gen:
                     if 'embed' in name:
-                        print(name)
                         yield item
 
             def dense_parameters(named_gen):
                 for name, item in named_gen:
                     if 'embed' not in name:
-                        print(name)
                         yield item
-            
+            lr_wargs = {'lr': opt_lr} if opt_lr is not None else {} 
+            slr_wargs = {'lr': opt_s_lr} if opt_s_lr is not None else {} 
             if isinstance(optimizer, str):
                 if optimizer == "sgd":
-                    optim = torch.optim.SGD(dense_parameters(self.named_parameters()), lr=0.01)
+                    optim = torch.optim.SGD(dense_parameters(self.named_parameters()), **lr_wargs)
                 elif optimizer == "adam":
-                    optim = torch.optim.Adam(dense_parameters(self.named_parameters()))  # 0.001
+                    optim = torch.optim.Adam(dense_parameters(self.named_parameters()), **lr_wargs)  # 0.001
                 elif optimizer == "adagrad":
-                    optim = torch.optim.Adagrad(dense_parameters(self.named_parameters()))  # 0.01
+                    optim = torch.optim.Adagrad(dense_parameters(self.named_parameters()), **lr_wargs)  # 0.01
                 elif optimizer == "rmsprop":
-                    optim = torch.optim.RMSprop(dense_parameters(self.named_parameters()))
+                    optim = torch.optim.RMSprop(dense_parameters(self.named_parameters()), **lr_wargs)
                 else:
                     raise NotImplementedError
             else:
                 optim = optimizer
             if isinstance(optimizer_sparse, str):
-                if optimizer == "sgd":
-                    optim_s = torch.optim.SGD(sparse_parameters(self.named_parameters()), lr=0.01)
-                elif optimizer == "adam":
-                    optim_s = torch.optim.Adam(sparse_parameters(self.named_parameters()))  # 0.001
-                elif optimizer == "adagrad":
-                    optim_s = torch.optim.Adagrad(sparse_parameters(self.named_parameters()))  # 0.01
-                elif optimizer == "rmsprop":
-                    optim_s = torch.optim.RMSprop(sparse_parameters(self.named_parameters()))
+                if optimizer_sparse == "sgd":
+                    optim_s = torch.optim.SGD(sparse_parameters(self.named_parameters()), **slr_wargs)
+                elif optimizer_sparse == "adam":
+                    print("Hit Adam.")
+                    optim_s = torch.optim.Adam(sparse_parameters(self.named_parameters()), **slr_wargs)  # 0.001
+                elif optimizer_sparse == "adagrad":
+                    optim_s = torch.optim.Adagrad(sparse_parameters(self.named_parameters()), **slr_wargs)  # 0.01
+                elif optimizer_sparse == "rmsprop":
+                    optim_s = torch.optim.RMSprop(sparse_parameters(self.named_parameters()), **slr_wargs)
                 else:
                     raise NotImplementedError
             else:
